@@ -5,10 +5,10 @@ import loadScript from 'load-script'
 
 const AUDIO_EXTENSIONS = /\.(m4a|mp4a|mpga|mp2|mp2a|mp3|m2a|m3a|wav|weba|aac|oga|spx)($|\?)/i
 const HLS_EXTENSIONS = /\.(m3u8)($|\?)/i
-const HLS_SDK_URL = '//assets/hls.min.js'
+const HLS_SDK_URL = window.location.origin + '/assets/hls.min.js'
 const HLS_GLOBAL = 'Hls'
 const DASH_EXTENSIONS = /\.(mpd)($|\?)/i
-const DASH_SDK_URL = '//assets/dash.all.min.js'
+const DASH_SDK_URL = window.location.origin + '/assets/dash.all.min.js'
 const DASH_GLOBAL = 'dashjs'
 
 export default class FilePlayer extends Base {
