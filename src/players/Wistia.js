@@ -1,85 +1,66 @@
-import React from 'react'
-import loadScript from 'load-script'
+import React, { Component } from 'react'
 
-import Base from './Base'
+import { callPlayer, getSDK } from '../utils'
 
 const SDK_URL = '//fast.wistia.com/assets/external/E-v1.js'
 const SDK_GLOBAL = 'Wistia'
 const MATCH_URL = /^https?:\/\/(.+)?(wistia.com|wi.st)\/(medias|embed)\/(.*)$/
 
-export default class Wistia extends Base {
+export default class Wistia extends Component {
   static displayName = 'Wistia'
-  static canPlay (url) {
-    return MATCH_URL.test(url)
-  }
-  getSDK () {
-    return new Promise((resolve, reject) => {
-      if (window[SDK_GLOBAL]) {
-        resolve()
-      } else {
-        loadScript(SDK_URL, (err, script) => {
-          if (err) reject(err)
-          resolve(script)
-        })
-      }
-    })
-  }
+  static canPlay = url => MATCH_URL.test(url)
+  static loopOnEnded = true
+
+  callPlayer = callPlayer
   getID (url) {
     return url && url.match(MATCH_URL)[4]
   }
   load (url) {
-    const { onStart, onPause, onSeek, onEnded, wistiaConfig } = this.props
-    this.getSDK().then(() => {
+    const { controls, onReady, onPlay, onPause, onSeek, onEnded, config } = this.props
+    getSDK(SDK_URL, SDK_GLOBAL).then(() => {
       window._wq = window._wq || []
       window._wq.push({
         id: this.getID(url),
-        options: wistiaConfig.options,
+        options: {
+          controlsVisibleOnLoad: controls,
+          ...config.wistia.options
+        },
         onReady: player => {
           this.player = player
-          this.player.bind('start', onStart)
-          this.player.bind('play', this.onPlay)
+          this.player.bind('play', onPlay)
           this.player.bind('pause', onPause)
           this.player.bind('seek', onSeek)
           this.player.bind('end', onEnded)
-          this.onReady()
+          onReady()
         }
       })
     })
   }
   play () {
-    if (!this.isReady || !this.player) return
-    this.player.play()
+    this.callPlayer('play')
   }
   pause () {
-    if (!this.isReady || !this.player) return
-    this.player && this.player.pause()
+    this.callPlayer('pause')
   }
   stop () {
-    if (!this.isReady || !this.player) return
-    this.player.pause()
+    this.callPlayer('remove')
   }
-  seekTo (amount) {
-    const seconds = super.seekTo(amount)
-    if (!this.isReady || !this.player) return
-    this.player.time(seconds)
+  seekTo (seconds) {
+    this.callPlayer('time', seconds)
   }
   setVolume (fraction) {
-    if (!this.isReady || !this.player || !this.player.volume) return
-    this.player.volume(fraction)
+    this.callPlayer('volume', fraction)
   }
   setPlaybackRate (rate) {
-    if (!this.isReady || !this.player || !this.player.playbackRate) return
-    this.player.playbackRate(rate)
+    this.callPlayer('playbackRate', rate)
   }
   getDuration () {
-    if (!this.isReady || !this.player || !this.player.duration) return
-    return this.player.duration()
+    return this.callPlayer('duration')
   }
-  getFractionPlayed () {
-    if (!this.isReady || !this.player || !this.player.percentWatched) return null
-    return this.player.time() / this.player.duration()
+  getCurrentTime () {
+    return this.callPlayer('time')
   }
-  getFractionLoaded () {
+  getSecondsLoaded () {
     return null
   }
   render () {
@@ -87,8 +68,7 @@ export default class Wistia extends Base {
     const className = `wistia_embed wistia_async_${id}`
     const style = {
       width: '100%',
-      height: '100%',
-      display: this.props.url ? 'block' : 'none'
+      height: '100%'
     }
     return (
       <div key={id} className={className} style={style} />

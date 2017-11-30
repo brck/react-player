@@ -2,7 +2,7 @@ import React, { Component } from 'react'
 import { findDOMNode } from 'react-dom'
 import screenfull from 'screenfull'
 
-import 'normalize.css/normalize.css'
+import './reset.scss'
 import './defaults.scss'
 import './App.scss'
 import './Range.scss'
@@ -22,10 +22,12 @@ export default class App extends Component {
     url: null,
     playing: true,
     volume: 0.8,
+    muted: false,
     played: 0,
     loaded: 0,
     duration: 0,
-    playbackRate: 1.0
+    playbackRate: 1.0,
+    loop: false
   }
   load = url => {
     this.setState({
@@ -40,12 +42,23 @@ export default class App extends Component {
   stop = () => {
     this.setState({ url: null, playing: false })
   }
+  toggleLoop = () => {
+    this.setState({ loop: !this.state.loop })
+  }
   setVolume = e => {
     this.setState({ volume: parseFloat(e.target.value) })
   }
+  toggleMuted = () => {
+    this.setState({ muted: !this.state.muted })
+  }
   setPlaybackRate = e => {
-    console.log(parseFloat(e.target.value))
     this.setState({ playbackRate: parseFloat(e.target.value) })
+  }
+  onPlay = () => {
+    this.setState({ playing: true })
+  }
+  onPause = () => {
+    this.setState({ playing: false })
   }
   onSeekMouseDown = e => {
     this.setState({ seeking: true })
@@ -83,9 +96,12 @@ export default class App extends Component {
       </button>
     )
   }
+  ref = player => {
+    this.player = player
+  }
   render () {
     const {
-      url, playing, volume,
+      url, playing, volume, muted, loop,
       played, loaded, duration,
       playbackRate,
       soundcloudConfig,
@@ -101,25 +117,27 @@ export default class App extends Component {
           <h1>ReactPlayer Demo</h1>
           <div className='player-wrapper'>
             <ReactPlayer
-              ref={player => { this.player = player }}
+              ref={this.ref}
               className='react-player'
               width='100%'
               height='100%'
               url={url}
               playing={playing}
+              loop={loop}
               playbackRate={playbackRate}
               volume={volume}
+              muted={muted}
               soundcloudConfig={soundcloudConfig}
               vimeoConfig={vimeoConfig}
               youtubeConfig={youtubeConfig}
               fileConfig={fileConfig}
               onReady={() => console.log('onReady')}
               onStart={() => console.log('onStart')}
-              onPlay={() => this.setState({ playing: true })}
-              onPause={() => this.setState({ playing: false })}
+              onPlay={this.onPlay}
+              onPause={this.onPause}
               onBuffer={() => console.log('onBuffer')}
               onSeek={e => console.log('onSeek', e)}
-              onEnded={() => this.setState({ playing: false })}
+              onEnded={() => this.setState({ playing: loop })}
               onError={e => console.log('onError', e)}
               onProgress={this.onProgress}
               onDuration={duration => this.setState({ duration })}
@@ -154,6 +172,16 @@ export default class App extends Component {
               <th>Volume</th>
               <td>
                 <input type='range' min={0} max={1} step='any' value={volume} onChange={this.setVolume} />
+                <label>
+                  <input type='checkbox' checked={muted} onChange={this.toggleMuted} /> Muted
+                </label>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <label>
+                  <input type='checkbox' checked={loop} onChange={this.toggleLoop} /> Loop
+                </label>
               </td>
             </tr>
             <tr>
@@ -193,7 +221,15 @@ export default class App extends Component {
               <th>Vimeo</th>
               <td>
                 {this.renderLoadButton('https://vimeo.com/90509568', 'Test A')}
-                {this.renderLoadButton('https://vimeo.com/94502406', 'Test B')}
+                {this.renderLoadButton('https://vimeo.com/169599296', 'Test B')}
+              </td>
+            </tr>
+            <tr>
+              <th>Twitch</th>
+              <td>
+                {this.renderLoadButton('https://www.twitch.tv/videos/106400740', 'Test A')}
+                {this.renderLoadButton('https://www.twitch.tv/videos/12783852', 'Test B')}
+                {this.renderLoadButton('https://www.twitch.tv/kronovi', 'Test C')}
               </td>
             </tr>
             <tr>
@@ -207,7 +243,7 @@ export default class App extends Component {
               <th>Vidme</th>
               <td>
                 {this.renderLoadButton('https://vid.me/yvi', 'Test A')}
-                {this.renderLoadButton('https://vid.me/yvf', 'Test B')}
+                {this.renderLoadButton('https://vid.me/GGho', 'Test B')}
               </td>
             </tr>
             <tr>
@@ -220,7 +256,7 @@ export default class App extends Component {
             <tr>
               <th>DailyMotion</th>
               <td>
-                {this.renderLoadButton('http://www.dailymotion.com/video/x26m1j4_wildlife_animals', 'Test A')}
+                {this.renderLoadButton('http://www.dailymotion.com/video/x2buxsr', 'Test A')}
                 {this.renderLoadButton('http://www.dailymotion.com/video/x26ezj5', 'Test B')}
               </td>
             </tr>
@@ -230,6 +266,7 @@ export default class App extends Component {
                 {this.renderLoadButton('http://clips.vorwaerts-gmbh.de/big_buck_bunny.mp4', 'mp4')}
                 {this.renderLoadButton('http://clips.vorwaerts-gmbh.de/big_buck_bunny.ogv', 'ogv')}
                 {this.renderLoadButton('http://clips.vorwaerts-gmbh.de/big_buck_bunny.webm', 'webm')}
+                {this.renderLoadButton('http://www.sample-videos.com/audio/mp3/crowd-cheering.mp3', 'mp3')}
                 {this.renderLoadButton(MULTIPLE_SOURCES, 'Multiple')}
                 {this.renderLoadButton('https://bitdash-a.akamaihd.net/content/MI201109210084_1/m3u8s/f08e80da-bf1d-4e3d-8899-f0f6155f6efa.m3u8', 'HLS (m3u8)')}
                 {this.renderLoadButton('http://dash.edgesuite.net/envivio/EnvivioDash3/manifest.mpd', 'DASH (mpd)')}

@@ -1,7 +1,6 @@
-import React from 'react'
-import loadScript from 'load-script'
+import React, { Component } from 'react'
 
-import Base from './Base'
+import { callPlayer, getSDK, randomString } from '../utils'
 
 const SDK_URL = '//connect.facebook.net/en_US/sdk.js'
 const SDK_GLOBAL = 'FB'
@@ -9,93 +8,62 @@ const SDK_GLOBAL_READY = 'fbAsyncInit'
 const MATCH_URL = /^https:\/\/www\.facebook\.com\/([^/?].+\/)?video(s|\.php)[/?].*$/
 const PLAYER_ID_PREFIX = 'facebook-player-'
 
-export default class YouTube extends Base {
+export default class Facebook extends Component {
   static displayName = 'Facebook'
-  static canPlay (url) {
-    return MATCH_URL.test(url)
-  }
+  static canPlay = url => MATCH_URL.test(url)
+  static loopOnEnded = true
+
+  callPlayer = callPlayer
   playerID = PLAYER_ID_PREFIX + randomString()
-  getSDK () {
-    if (window[SDK_GLOBAL]) {
-      return Promise.resolve(window[SDK_GLOBAL])
-    }
-    return new Promise((resolve, reject) => {
-      const previousOnReady = window[SDK_GLOBAL_READY]
-      window[SDK_GLOBAL_READY] = function () {
-        if (previousOnReady) previousOnReady()
-        resolve(window[SDK_GLOBAL])
-      }
-      loadScript(SDK_URL, err => {
-        if (err) reject(err)
-      })
-    })
-  }
-  load (url) {
-    if (this.isReady) {
-      this.getSDK().then(FB => FB.XFBML.parse())
+  load (url, isReady) {
+    if (isReady) {
+      getSDK(SDK_URL, SDK_GLOBAL, SDK_GLOBAL_READY).then(FB => FB.XFBML.parse())
       return
     }
-    this.getSDK().then(FB => {
+    getSDK(SDK_URL, SDK_GLOBAL, SDK_GLOBAL_READY).then(FB => {
       FB.init({
-        appId: this.props.facebookConfig.appId,
+        appId: this.props.config.facebook.appId,
         xfbml: true,
         version: 'v2.5'
       })
       FB.Event.subscribe('xfbml.ready', msg => {
         if (msg.type === 'video' && msg.id === this.playerID) {
           this.player = msg.instance
-          this.player.subscribe('startedPlaying', this.onPlay)
+          this.player.subscribe('startedPlaying', this.props.onPlay)
           this.player.subscribe('paused', this.props.onPause)
-          this.player.subscribe('finishedPlaying', this.onEnded)
+          this.player.subscribe('finishedPlaying', this.props.onEnded)
           this.player.subscribe('startedBuffering', this.props.onBuffer)
           this.player.subscribe('error', this.props.onError)
-          this.onReady()
+          this.props.onReady()
         }
       })
     })
   }
-  onEnded = () => {
-    const { loop, onEnded } = this.props
-    if (loop) {
-      this.seekTo(0)
-    }
-    onEnded()
-  }
   play () {
-    if (!this.isReady) return
-    this.player.play()
+    this.callPlayer('play')
   }
   pause () {
-    if (!this.isReady) return
-    this.player.pause()
+    this.callPlayer('pause')
   }
   stop () {
-    // No need to stop
+    // Nothing to do
   }
-  seekTo (amount) {
-    const seconds = super.seekTo(amount)
-    if (!this.isReady) return
-    this.player.seek(seconds)
+  seekTo (seconds) {
+    this.callPlayer('seek', seconds)
   }
   setVolume (fraction) {
-    if (!this.isReady) return
     if (fraction !== 0) {
-      this.player.unmute()
+      this.callPlayer('unmute')
     }
-    this.player.setVolume(fraction)
-  }
-  setPlaybackRate () {
-    return null
+    this.callPlayer('setVolume', fraction)
   }
   getDuration () {
-    if (!this.isReady) return null
-    return this.player.getDuration()
+    return this.callPlayer('getDuration')
   }
-  getFractionPlayed () {
-    if (!this.isReady || !this.getDuration()) return null
-    return this.player.getCurrentPosition() / this.getDuration()
+  getCurrentTime () {
+    return this.callPlayer('getCurrentPosition')
   }
-  getFractionLoaded () {
+  getSecondsLoaded () {
     return null
   }
   render () {
@@ -115,9 +83,4 @@ export default class YouTube extends Base {
       />
     )
   }
-}
-
-// http://stackoverflow.com/a/38622545
-function randomString () {
-  return Math.random().toString(36).substr(2, 5)
 }

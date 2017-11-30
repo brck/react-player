@@ -1,9 +1,8 @@
-var webpackConfig = require('../webpack.config.dev')
-webpackConfig.devtool = 'inline-source-map'
+import webpackConfig from '../webpack.config.babel'
 
-module.exports = function (config) {
+export default function (config) {
   config.set({
-    browsers: process.env.TRAVIS ? [ 'ChromeTravis' ] : [ 'Chrome', 'Firefox' ],
+    browsers: process.env.TRAVIS ? [ 'ChromeTravis' ] : [ 'Chrome' ],
     singleRun: true,
     frameworks: [ 'mocha', 'chai' ],
     files: [
@@ -12,8 +11,11 @@ module.exports = function (config) {
     preprocessors: {
       'karma.webpack.js': [ 'webpack', 'sourcemap' ]
     },
-    reporters: [ 'mocha' ],
-    webpack: webpackConfig,
+    reporters: [ 'mocha', 'coverage' ],
+    webpack: {
+      ...webpackConfig,
+      devtool: 'inline-source-map'
+    },
     webpackServer: {
       noInfo: true
     },
@@ -28,6 +30,12 @@ module.exports = function (config) {
         base: 'Chrome',
         flags: ['--no-sandbox']
       }
+    },
+    coverageReporter: {
+      dir: 'coverage',
+      reporters: [
+        { type: 'lcov', subdir: '.' }
+      ]
     }
   })
 }

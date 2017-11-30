@@ -1,9 +1,9 @@
-import React from 'react'
+import React, { Component } from 'react'
 
-import Base from './Base'
-import loadScript from 'load-script'
+import { getSDK } from '../utils'
 
 const AUDIO_EXTENSIONS = /\.(m4a|mp4a|mpga|mp2|mp2a|mp3|m2a|m3a|wav|weba|aac|oga|spx)($|\?)/i
+const VIDEO_EXTENSIONS = /\.(mp4|og[gv]|webm|mov|m4v)($|\?)/i
 const HLS_EXTENSIONS = /\.(m3u8)($|\?)/i
 const HLS_SDK_URL = window.location.origin + '/assets/hls.min.js'
 const HLS_GLOBAL = 'Hls'
@@ -11,20 +11,51 @@ const DASH_EXTENSIONS = /\.(mpd)($|\?)/i
 const DASH_SDK_URL = window.location.origin + '/assets/dash.all.min.js'
 const DASH_GLOBAL = 'dashjs'
 
-export default class FilePlayer extends Base {
-  static displayName = 'FilePlayer'
-  static canPlay (url) {
-    return true
-  }
-  componentDidMount () {
-    const { playsinline, onPause, onEnded, onError } = this.props
-    this.player.addEventListener('canplay', this.onReady)
-    this.player.addEventListener('play', this.onPlay)
-    this.player.addEventListener('pause', () => {
-      if (this.mounted) {
-        onPause()
+function canPlay (url) {
+  if (url instanceof Array) {
+    for (let item of url) {
+      if (typeof item === 'string' && canPlay(item)) {
+        return true
       }
-    })
+      if (canPlay(item.src)) {
+        return true
+      }
+    }
+    return false
+  }
+  return (
+    AUDIO_EXTENSIONS.test(url) ||
+    VIDEO_EXTENSIONS.test(url) ||
+    HLS_EXTENSIONS.test(url) ||
+    DASH_EXTENSIONS.test(url)
+  )
+}
+
+export default class FilePlayer extends Component {
+  static displayName = 'FilePlayer'
+  static canPlay = canPlay
+
+  componentDidMount () {
+    this.addListeners()
+  }
+  componentWillReceiveProps (nextProps) {
+    if (this.shouldUseAudio(this.props) !== this.shouldUseAudio(nextProps)) {
+      this.removeListeners()
+    }
+  }
+  componentDidUpdate (prevProps) {
+    if (this.shouldUseAudio(this.props) !== this.shouldUseAudio(prevProps)) {
+      this.addListeners()
+    }
+  }
+  componentWillUnmount () {
+    this.removeListeners()
+  }
+  addListeners () {
+    const { onReady, onPlay, onPause, onEnded, onError, playsinline } = this.props
+    this.player.addEventListener('canplay', onReady)
+    this.player.addEventListener('play', onPlay)
+    this.player.addEventListener('pause', onPause)
     this.player.addEventListener('seeked', this.onSeek)
     this.player.addEventListener('ended', onEnded)
     this.player.addEventListener('error', onError)
@@ -32,44 +63,49 @@ export default class FilePlayer extends Base {
       this.player.setAttribute('playsinline', '')
       this.player.setAttribute('webkit-playsinline', '')
     }
-    super.componentDidMount()
   }
-  componentWillUnmount () {
-    const { onPause, onEnded, onError } = this.props
-    this.player.removeEventListener('canplay', this.onReady)
-    this.player.removeEventListener('play', this.onPlay)
+  removeListeners () {
+    const { onReady, onPlay, onPause, onEnded, onError } = this.props
+    this.player.removeEventListener('canplay', onReady)
+    this.player.removeEventListener('play', onPlay)
     this.player.removeEventListener('pause', onPause)
     this.player.removeEventListener('seeked', this.onSeek)
     this.player.removeEventListener('ended', onEnded)
     this.player.removeEventListener('error', onError)
-    super.componentWillUnmount()
   }
   onSeek = e => {
     this.props.onSeek(e.target.currentTime)
   }
+  shouldUseAudio (props) {
+    return AUDIO_EXTENSIONS.test(props.url) || props.config.file.forceAudio
+  }
   shouldUseHLS (url) {
-    return HLS_EXTENSIONS.test(url) || this.props.fileConfig.forceHLS
+    return HLS_EXTENSIONS.test(url) || this.props.config.file.forceHLS
   }
   shouldUseDASH (url) {
-    return DASH_EXTENSIONS.test(url) || this.props.fileConfig.forceDASH
+    return DASH_EXTENSIONS.test(url) || this.props.config.file.forceDASH
   }
   load (url) {
     if (this.shouldUseHLS(url)) {
-      loadSDK(HLS_SDK_URL, HLS_GLOBAL).then(Hls => {
+      getSDK(HLS_SDK_URL, HLS_GLOBAL).then(Hls => {
         this.hls = new Hls()
         this.hls.loadSource(url)
         this.hls.attachMedia(this.player)
       })
     }
     if (this.shouldUseDASH(url)) {
-      loadSDK(DASH_SDK_URL, DASH_GLOBAL).then(dashjs => {
-        const player = dashjs.MediaPlayer().create()
-        player.initialize(this.player, url, true)
+      getSDK(DASH_SDK_URL, DASH_GLOBAL).then(dashjs => {
+        this.dash = dashjs.MediaPlayer().create()
+        this.dash.initialize(this.player, url, this.props.playing)
+        this.dash.getDebug().setLogToBrowserConsole(false)
       })
     }
   }
   play () {
-    this.player.play().catch(this.props.onError)
+    const promise = this.player.play()
+    if (promise) {
+      promise.catch(this.props.onError)
+    }
   }
   pause () {
     this.player.pause()
@@ -77,11 +113,13 @@ export default class FilePlayer extends Base {
   stop () {
     this.player.removeAttribute('src')
     if (this.hls) {
-      this.hls.detachMedia()
+      this.hls.destroy()
+    }
+    if (this.dash) {
+      this.dash.reset()
     }
   }
-  seekTo (amount) {
-    const seconds = super.seekTo(amount)
+  seekTo (seconds) {
     this.player.currentTime = seconds
   }
   setVolume (fraction) {
@@ -91,23 +129,21 @@ export default class FilePlayer extends Base {
     this.player.playbackRate = rate
   }
   getDuration () {
-    if (!this.isReady) return null
     return this.player.duration
   }
-  getFractionPlayed () {
-    if (!this.isReady) return null
-    return this.player.currentTime / this.getDuration()
+  getCurrentTime () {
+    return this.player.currentTime
   }
-  getFractionLoaded () {
-    if (!this.isReady || this.player.buffered.length === 0) return null
-    return this.player.buffered.end(0) / this.getDuration()
+  getSecondsLoaded () {
+    if (this.player.buffered.length === 0) return 0
+    return this.player.buffered.end(0)
   }
-  renderSource = source => {
+  renderSource = (source, index) => {
     if (typeof source === 'string') {
-      return <source key={source} src={source} />
+      return <source key={index} src={source} />
     }
     const { src, type } = source
-    return <source key={src} src={src} type={type} />
+    return <source key={index} src={src} type={type} />
   }
   renderTrack = (track, index) => {
     return <track key={index} {...track} />
@@ -116,16 +152,15 @@ export default class FilePlayer extends Base {
     this.player = player
   }
   render () {
-    const { url, loop, controls, fileConfig, width, height } = this.props
-    const useAudio = AUDIO_EXTENSIONS.test(url) || fileConfig.forceAudio
+    const { url, loop, controls, config, width, height } = this.props
+    const useAudio = this.shouldUseAudio(this.props)
     const useHLS = this.shouldUseHLS(url)
     const useDASH = this.shouldUseDASH(url)
     const Element = useAudio ? 'audio' : 'video'
     const src = url instanceof Array || useHLS || useDASH ? undefined : url
     const style = {
       width: !width || width === 'auto' ? width : '100%',
-      height: !height || height === 'auto' ? height : '100%',
-      display: url ? 'block' : 'none'
+      height: !height || height === 'auto' ? height : '100%'
     }
     return (
       <Element
@@ -135,26 +170,12 @@ export default class FilePlayer extends Base {
         preload='auto'
         controls={controls}
         loop={loop}
-        {...fileConfig.attributes}>
+        {...config.file.attributes}>
         {url instanceof Array &&
           url.map(this.renderSource)
         }
-        {fileConfig.tracks instanceof Array &&
-          fileConfig.tracks.map(this.renderTrack)
-        }
+        {config.file.tracks.map(this.renderTrack)}
       </Element>
     )
   }
-}
-
-function loadSDK (url, globalVar) {
-  if (window[globalVar]) {
-    return Promise.resolve(window[globalVar])
-  }
-  return new Promise((resolve, reject) => {
-    loadScript(url, err => {
-      if (err) reject(err)
-      resolve(window[globalVar])
-    })
-  })
 }

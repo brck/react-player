@@ -5,7 +5,7 @@
   "authors": [
     "Pete Cook <pete@cookpete.com> (http://github.com/cookpete)"
   ],
-  "license": "CC0-1.0",
+  "license": "MIT",
   "keywords": [
     "react",
     "media",
@@ -24,16 +24,14 @@
     "globals"
   ],
   "ignore": [
-    "**/.*",
-    "node_modules",
-    "test",
-    "src",
-    "lib",
-    "server.js",
-    "index.html",
-    "webpack.config.*.js"
+    "*",
+    "!dist/*",
+    "!package.json",
+    "!CHANGELOG.md",
+    "!README.md",
+    "!LICENSE"
   ],
   "dependencies": {
-    "react": "^0.14.7"
+    "react": "*"
   }
 }

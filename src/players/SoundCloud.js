@@ -1,85 +1,86 @@
-import React from 'react'
-import fetchJSONP from 'fetch-jsonp'
+import React, { Component } from 'react'
 
-import FilePlayer from './FilePlayer'
-import { defaultProps } from '../props'
+import { callPlayer, getSDK } from '../utils'
 
-const RESOLVE_URL = '//api.soundcloud.com/resolve.json'
+const SDK_URL = 'https://w.soundcloud.com/player/api.js'
+const SDK_GLOBAL = 'SC'
 const MATCH_URL = /^https?:\/\/(soundcloud.com|snd.sc)\/([a-z0-9-_]+\/[a-z0-9-_]+)$/
 
-const songData = {} // Cache song data requests
-
-export default class SoundCloud extends FilePlayer {
+export default class SoundCloud extends Component {
   static displayName = 'SoundCloud'
-  static canPlay (url) {
-    return MATCH_URL.test(url)
-  }
-  state = {
-    image: null
-  }
-  clientId = this.props.soundcloudConfig.clientId || defaultProps.soundcloudConfig.clientId
-  shouldComponentUpdate (nextProps, nextState) {
-    return (
-      super.shouldComponentUpdate(nextProps, nextState) ||
-      this.state.image !== nextState.image
-    )
-  }
-  getSongData (url) {
-    if (songData[url]) {
-      return Promise.resolve(songData[url])
-    }
-    return fetchJSONP(RESOLVE_URL + '?url=' + url + '&client_id=' + this.clientId)
-      .then(response => {
-        if (response.ok) {
-          songData[url] = response.json()
-          return songData[url]
-        } else {
-          this.props.onError(new Error('SoundCloud track could not be resolved'))
+  static canPlay = url => MATCH_URL.test(url)
+  static loopOnEnded = true
+
+  callPlayer = callPlayer
+  duration = null
+  currentTime = null
+  fractionLoaded = null
+  load (url, isReady) {
+    getSDK(SDK_URL, SDK_GLOBAL).then(SC => {
+      if (!this.iframe) return
+      const { PLAY, PLAY_PROGRESS, PAUSE, FINISH, ERROR } = SC.Widget.Events
+      if (!isReady) {
+        this.player = SC.Widget(this.iframe)
+        this.player.bind(PLAY, this.props.onPlay)
+        this.player.bind(PAUSE, this.props.onPause)
+        this.player.bind(PLAY_PROGRESS, e => {
+          this.currentTime = e.currentPosition / 1000
+          this.fractionLoaded = e.loadedProgress
+        })
+        this.player.bind(FINISH, () => this.props.onEnded())
+        this.player.bind(ERROR, e => this.props.onError(e))
+      }
+      this.player.load(url, {
+        ...this.props.config.soundcloud.options,
+        callback: () => {
+          this.player.getDuration(duration => {
+            this.duration = duration / 1000
+            this.props.onReady()
+          })
         }
       })
+    })
   }
-  load (url) {
-    const { soundcloudConfig, onError } = this.props
-    this.stop()
-    this.getSongData(url).then(data => {
-      if (!this.mounted) return
-      if (!data.streamable) {
-        onError(new Error('SoundCloud track is not streamable'))
-        return
-      }
-      const image = data.artwork_url || data.user.avatar_url
-      if (image && soundcloudConfig.showArtwork) {
-        this.setState({ image: image.replace('-large', '-t500x500') })
-      }
-      this.player.src = data.stream_url + '?client_id=' + this.clientId
-    }, onError)
+  play () {
+    this.callPlayer('play')
   }
-  ref = player => {
-    this.player = player
+  pause () {
+    this.callPlayer('pause')
+  }
+  stop () {
+    // Nothing to do
+  }
+  seekTo (seconds) {
+    this.callPlayer('seekTo', seconds * 1000)
+  }
+  setVolume (fraction) {
+    this.callPlayer('setVolume', fraction * 100)
+  }
+  getDuration () {
+    return this.duration
+  }
+  getCurrentTime () {
+    return this.currentTime
+  }
+  getSecondsLoaded () {
+    return this.fractionLoaded * this.duration
+  }
+  ref = iframe => {
+    this.iframe = iframe
   }
   render () {
-    const { url, loop, controls } = this.props
     const style = {
-      display: url ? 'block' : 'none',
+      width: '100%',
       height: '100%',
-      backgroundImage: this.state.image ? 'url(' + this.state.image + ')' : null,
-      backgroundSize: 'cover',
-      backgroundPosition: 'center'
+      ...this.props.style
     }
     return (
-      <div style={style}>
-        <audio
-          ref={this.ref}
-          type='audio/mpeg'
-          preload='auto'
-          style={{
-            width: '100%',
-            height: '100%'
-          }}
-          controls={controls}
-          loop={loop}
-        />
-      </div>
+      <iframe
+        ref={this.ref}
+        src={`https://w.soundcloud.com/player/?url=${encodeURIComponent(this.props.url)}`}
+        style={style}
+        frameBorder={0}
+      />
     )
   }
 }
